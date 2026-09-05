@@ -166,7 +166,7 @@
     let originalFen = null;
     let solved = false;
 
-    // Sample game that contains clear mistakes (for testing)
+    // Sample game that contains clear mistakes
     const SAMPLE_PGN = `[Event "Test Game"]
 [Site "https://lichess.org"]
 [Result "0-1"]
@@ -301,11 +301,13 @@
       renderBoard(game.fen());
     }
 
-    // ========== STOCKFISH ==========
+    // ========== STOCKFISH (same-origin for Safari) ==========
     function initStockfish() {
       return new Promise((resolve, reject) => {
         try {
-          stockfish = new Worker('https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js');
+          // Loads from the same folder as index.html (required for Safari)
+          stockfish = new Worker('./stockfish.js');
+
           let ready = false;
 
           stockfish.onmessage = (e) => {
@@ -319,15 +321,19 @@
             }
           };
 
-          stockfish.onerror = () => {
-            reject(new Error('Stockfish engine failed to load on this device. Try the Test button or paste a PGN on a desktop browser.'));
+          stockfish.onerror = (err) => {
+            console.error(err);
+            reject(new Error('Stockfish failed to load. Make sure stockfish.js is in the same GitHub repo as index.html.'));
           };
 
           stockfish.postMessage('uci');
 
           setTimeout(() => {
-            if (!ready) reject(new Error('Stockfish timed out. The engine may not work well on iPhone/iPad Safari.'));
-          }, 10000);
+            if (!ready) {
+              reject(new Error('Stockfish timed out. Check that stockfish.js was uploaded correctly.'));
+            }
+          }, 12000);
+
         } catch (err) {
           reject(new Error('Could not start engine: ' + err.message));
         }
@@ -368,13 +374,11 @@
       });
     }
 
-    // Lower threshold so more puzzles are found
     async function findBlundersInGame(pgn) {
       const chess = new Chess();
       try {
         chess.load_pgn(pgn);
       } catch (e) {
-        console.warn('Bad PGN', e);
         return [];
       }
 
@@ -393,12 +397,11 @@
         const after = await analyzePosition(chess.fen(), 9);
         const afterScore = after.score ?? 0;
 
-        // From the side that just moved
         const swing = move.color === 'w'
           ? afterScore - prevScore
           : prevScore - afterScore;
 
-        // Lowered threshold from -1.3 to -0.9 so more puzzles appear
+        // Threshold: -0.9 (finds more puzzles)
         if (swing < -0.9) {
           const before = await analyzePosition(fenBefore, 11);
           if (before.bestMove) {
@@ -472,7 +475,7 @@
 
       if (puzzles.length === 0) {
         document.getElementById('progress').textContent =
-          'No significant mistakes found. Try a different game or lower standards.';
+          'No significant mistakes found. Try a different game.';
       } else {
         document.getElementById('progress').textContent = `Found ${puzzles.length} puzzles!`;
         currentPuzzleIndex = 0;
@@ -481,7 +484,6 @@
       }
     }
 
-    // Main button
     document.getElementById('analyzeBtn').onclick = async () => {
       if (analyzing) return;
       analyzing = true;
@@ -533,7 +535,6 @@
       }
     };
 
-    // Test button – uses sample game
     document.getElementById('testBtn').onclick = async () => {
       if (analyzing) return;
       analyzing = true;
